@@ -1,0 +1,543 @@
+---
+title: "terrorism_populism_ttm"
+author: 'teodora-margaritova'
+date: "2024-03-23"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+setwd("C:/Users/likis/OneDrive/Desktop/GV482/Summative")
+library(haven)
+popter<-read_dta("PopulismTerrorism.dta")
+```
+
+#MODIFICATIONS TO DATA SET
+
+```{r}
+popter <- popter[complete.cases(popter$populationY1), ]
+
+#Creating a function to aggregate values of a given variable, for all 4 years leading up to the election.For example, Total4HomeIslClaim takes the sum of all claimed islamic terrorist attacks that happened in the 4 years leading to an election in a given country.
+library(tidyverse)
+createTotal4Variable <- function(prefix) {
+  # Selecting columns starting with the specified prefix
+  selected_columns <- select(popter, starts_with(prefix))
+  # Converting selected columns to numeric, replacing NA values with 0
+  selected_columns_numeric <- apply(selected_columns, 2, function(x) as.numeric(ifelse(is.na(x), 0, x)))
+  # Summing across rows, handling NA values
+  total_variable <- rowSums(selected_columns_numeric, na.rm = TRUE)
+  # Assigning the total variable to a new column in the dataset
+  popter[[paste0("Total4", prefix)]] <- total_variable
+  return(popter)
+}
+
+variables <- c("HomeAttacks", "Homenkill", "Homenwound", "Homeleftproxy", "Homenkill_left", "Homenwound_left","Homerightproxy", "Homenkill_right", "Homenwound_right", "HomeIslClaim", "Homenkill_IslCl", "Homenwound_IslCl", "HomeIslPoss", "Homenkill_IslPoss", "Homenwound_IslPoss")
+
+for (var in variables) {
+  popter <- createTotal4Variable(var)
+}
+
+popter <- popter %>%
+  mutate(
+    PopulistRight = as.numeric(PopulistRight),
+    PopulistLeft = as.numeric(PopulistLeft)
+  ) %>%
+  # Recalculate PopulistTot
+  mutate(PopulistTot = rowSums(select(., PopulistRight, PopulistLeft), na.rm = TRUE))
+
+#Creating lag variables for PopulistRight, PopulistLeft, PopulistTot
+popter <- popter %>% 
+  arrange(Country, Year) %>%
+  group_by(Country) %>% 
+  mutate(
+    PopulistRight_Lag1 = lag(PopulistRight),
+    PopulistLeft_Lag1 = lag(PopulistLeft),
+    PopulistTot_Lag1 = lag(PopulistTot),
+    PopulistRight_Lag2 = lag(PopulistRight, 2),
+    PopulistLeft_Lag2 = lag(PopulistLeft, 2),
+    PopulistTot_Lag2 = lag(PopulistTot, 2),
+    PopulistRight_Lag3 = lag(PopulistRight, 3),
+    PopulistLeft_Lag3 = lag(PopulistLeft, 3),
+    PopulistTot_Lag3 = lag(PopulistTot, 3),
+    PopulistRight_Lag4 = lag(PopulistRight, 4),
+    PopulistLeft_Lag4 = lag(PopulistLeft, 4),
+    PopulistTot_Lag4 = lag(PopulistTot, 4),
+    PopulistRight_Lag5 = lag(PopulistRight, 5),
+    PopulistLeft_Lag5 = lag(PopulistLeft, 5),
+    PopulistTot_Lag5 = lag(PopulistTot, 5)
+  )
+
+# Creating a template data frame with all combinations of Country and Year
+countries <- unique(popter$Country)
+years <- 1977:2020
+template_df <- expand.grid(Country = countries, Year = years)
+
+# Merging the template data frame with the original data frame
+merged_df <- left_join(template_df, popter, by = c("Country", "Year"))
+
+# Sorting the data by Country and Year, and grouping by Country
+gpopt <- merged_df %>% 
+  arrange(Country, Year) %>%
+  group_by(Country)
+
+#Creating lead variables for HomeIslClaimY2, HomeIslClaimY3, and HomeIslClaimY4,and creating a merged variable combining them into one variable M_HomeIslClaim, which shows the number of attacks in a given year, in a given country
+gpopt <- gpopt %>%
+  mutate(
+    Lead_HomeIslClaimY2 = lead(HomeIslClaimY2),
+    Lead2_HomeIslClaimY3 = lead(HomeIslClaimY3, n = 2),
+    Lead3_HomeIslClaimY4 = lead(HomeIslClaimY3, n = 3),
+    M_HomeIslClaim = coalesce(HomeIslClaimY1, Lead_HomeIslClaimY2, Lead2_HomeIslClaimY3, Lead3_HomeIslClaimY4))
+
+gpopt <- gpopt %>%
+    mutate(
+      Lead_Homenkill_IslClY2 = lead(Homenkill_IslClY2),
+      Lead2_Homenkill_IslClY3 = lead(Homenkill_IslClY3, n = 2),
+      Lead3_Homenkill_IslClY4 = lead(Homenkill_IslClY4, n = 3),
+      M_HomeIslClaim_nkill = coalesce(Homenkill_IslClY1,Lead_Homenkill_IslClY2, Lead2_Homenkill_IslClY3, Lead3_Homenkill_IslClY4))
+  
+  gpopt <- gpopt %>%
+    mutate(
+      Lead_Homenwound_IslClY2 = lead(Homenwound_IslClY2),
+      Lead2_Homenwound_IslClY3 = lead(Homenwound_IslClY3, n = 2),
+      Lead3_Homenwound_IslClY4 = lead(Homenwound_IslClY4, n = 3),
+      M_HomeIslClaim_nwound = coalesce(Homenwound_IslClY1,Lead_Homenwound_IslClY2, Lead2_Homenwound_IslClY3, Lead3_Homenwound_IslClY4)) 
+  
+  gpopt <- gpopt %>%
+  mutate(
+    Lead_HomeAttacksY2 = lead(HomeAttacksY2),
+    Lead2_HomeAttacksY3 = lead(HomeAttacksY3, n = 2),
+    Lead3_HomeAttacksY4 = lead(HomeAttacksY3, n = 3),
+    M_HomeAttacks = coalesce(HomeAttacksY1, Lead_HomeAttacksY2, Lead2_HomeAttacksY3, Lead3_HomeAttacksY4))
+
+gpopt <- gpopt %>%
+    mutate(
+      Lead_HomenkillY2 = lead(HomenkillY2),
+      Lead2_HomenkillY3 = lead(HomenkillY3, n = 2),
+      Lead3_HomenkillY4 = lead(HomenkillY4, n = 3),
+      M_Homenkill = coalesce(HomenkillY1,Lead_HomenkillY2, Lead2_HomenkillY3, Lead3_HomenkillY4))
+  
+  gpopt <- gpopt %>%
+    mutate(
+      Lead_HomenwoundY2 = lead(HomenwoundY2),
+      Lead2_HomenwoundY3 = lead(HomenwoundY3, n = 2),
+      Lead3_HomenwoundY4 = lead(HomenwoundY4, n = 3),
+      M_Homenwound = coalesce(HomenwoundY1,Lead_HomenwoundY2, Lead2_HomenwoundY3, Lead3_HomenwoundY4)) %>%ungroup()
+
+#Removing objects i won't need
+rm(merged_df, template_df)
+```
+
+#DESCRIPTIVE STATISTICS, PLOTS
+
+
+```{r}
+library(TAM)
+library(modelsummary)
+summary_statistics <- function(data, variables) {
+  summary_list <- list()
+  for (var in variables) {
+    var_data <- na.omit(data[[var]])
+    if (length(var_data) == 0) {
+      cat("Variable", var, "contains only missing values.\n")
+      next
+    }
+    n <- length(var_data)
+    mean_uw <- mean(var_data)
+    mean_w <- weighted.mean(var_data, w = popter$populationY1[!is.na(data[[var]])])
+    sd_uw <- sd(var_data)
+    sd_w <- TAM::weighted_sd(var_data, w = popter$populationY1[!is.na(data[[var]])])
+    min_uw <- min(var_data)
+    q1_uw <- quantile(var_data, 0.25)
+    q1_w <- TAM::weighted_quantile(var_data, w = popter$populationY1[!is.na(data[[var]])], prob = 0.25)
+    q3_uw <- quantile(var_data, 0.75)
+    q3_w <- TAM::weighted_quantile(var_data, w = popter$populationY1[!is.na(data[[var]])], prob = 0.75)
+    max_uw <- max(var_data)
+    
+    summary_list[[var]] <- data.frame(
+      "Variable" = var,
+      "Number of Observations" = n,
+      "Mean" = mean_uw,
+      "Weighted Mean" = mean_w,
+      "Standard Deviation" = sd_uw,
+      "Weighted Standard Deviation" = sd_w,
+      "Minimum" = min_uw,
+      "1st Quartile" = q1_uw,
+      "Weighted 1st Quartile" = q1_w,
+      "3rd Quartile" = q3_uw,
+      "Weighted 3rd Quartile" = q3_w,
+      "Maximum" = max_uw
+    )
+  }
+  summary_df <- do.call(rbind, summary_list)
+  return(summary_df)
+}
+
+# Example usage
+sdf <- summary_statistics(popter, c("PopulistRight", "HomeIslClaimY1", "HomeIslClaimY2", "HomeIslClaimY3", "HomeIslClaimY4", "Homenkill_IslClY1", "Homenkill_IslClY2", "Homenkill_IslClY3", "Homenkill_IslClY4", "Homenwound_IslClY1", "Homenwound_IslClY2", "Homenwound_IslClY3", "Homenwound_IslClY4"))
+
+
+descrs<-datasummary_df(sdf, output="latex")
+descrs
+```
+
+
+```{r}
+library(ggplot2)
+subset_gpopt <- gpopt %>%
+  filter(!is.na(M_HomeIslClaim_nwound) & 
+         !is.na(M_HomeIslClaim_nkill) &
+         !is.na(M_HomeIslClaim)) %>%
+  select(Year, M_HomeIslClaim_nwound, M_HomeIslClaim_nkill, M_HomeIslClaim)
+
+subset_gpopt_cumsum <- subset_gpopt %>%
+  mutate(M_HomeIslClaim_nwound_cumsum = cumsum(M_HomeIslClaim_nwound),
+         M_HomeIslClaim_nkill_cumsum = cumsum(M_HomeIslClaim_nkill),
+         M_HomeIslClaim_cumsum = cumsum(M_HomeIslClaim))
+
+subset_gpopt_sorted <- subset_gpopt %>%
+  arrange(Year)
+
+subset_gpopt_cumsum <- subset_gpopt_sorted %>%
+  mutate(M_HomeIslClaim_nwound_cumsum = cumsum(M_HomeIslClaim_nwound),
+         M_HomeIslClaim_nkill_cumsum = cumsum(M_HomeIslClaim_nkill),
+         M_HomeIslClaim_cumsum = cumsum(M_HomeIslClaim))
+
+# Create the plot for M_HomeIslClaim_cumsum
+plot1<-ggplot(subset_gpopt_cumsum, aes(x = Year, y = M_HomeIslClaim_cumsum)) +
+  geom_line(color = "darkgreen") +
+  labs(
+       x = "Year",
+       y = "Number of Islamic Attacks") +
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.3),
+        axis.title.y = element_text(margin = margin(t = 0, r = 8, b = 0, l = 0)))
+plot1
+
+# Create the plot for M_HomeIslClaim_nkill_cumsum
+plot2<-ggplot(subset_gpopt_cumsum, aes(x = Year, y = M_HomeIslClaim_nkill_cumsum)) +
+  geom_line(color = "blue") +
+  labs(       x = "Year",
+       y = "Number of killings") +
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.3),
+        axis.title.y = element_text(margin = margin(t = 0, r = 8, b = 0, l = 0)))
+plot2
+
+# Create the plot for M_HomeIslWound_cumsum
+plot3<-ggplot(subset_gpopt_cumsum, aes(x = Year, y = M_HomeIslClaim_nwound_cumsum)) +
+  geom_line(color = "red") +
+  labs(
+       x = "Year",
+       y = "Number of woundings") +
+  theme_minimal()+
+  theme(legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.3),
+        axis.title.y = element_text(margin = margin(t = 0, r = 8, b = 0, l = 0)))
+plot3
+
+```
+
+#PLOT OF AVERAGE POPULIST VOTE SHARE PER YEAR
+```{r}
+#Calculating average right and left wing populist vote share per year, for all units
+library(dplyr)
+av_popright <- aggregate(PopulistRight ~ Year, popter, FUN = function(x) round(mean(x), digits = 2))
+av_popleft <- aggregate(PopulistLeft ~ Year, popter, FUN = function(x) round(mean(x), digits=2))
+ds <- merge(av_popright, av_popleft, by = "Year", all = TRUE)
+ds$PopulistTot <- rowSums(select(ds, PopulistRight,PopulistLeft))
+rm(av_popright, av_popleft)
+
+#Creating the plot for average vote share per year, with PopulistRight vote share, PopulistLeft vote share, and Total Populist Vote Share
+library(ggplot2)
+ggplot(ds, aes(x = Year)) +
+  geom_area(aes(y = PopulistRight, fill = "Right-wing populism"), alpha = 1) +
+  geom_area(aes(y = PopulistLeft, fill = "Left-wing populism"), alpha = 1) +
+  geom_area(aes(y = PopulistTot, fill = "Total populism"), alpha = 0.5) +
+  scale_fill_manual(values = c("Right-wing populism" = "aquamarine3", 
+                                "Left-wing populism" = "coral2", 
+                                "Total populism" = "burlywood"),
+                    labels = c("Right-wing populism", "Left-wing populism", "Total populism")) +
+  labs(x = "Year", y = "Average Populist Vote Share(%)",fill = NULL) +
+  theme_minimal() +
+  theme(legend.position = "bottom",
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_rect(fill = "white"),
+        plot.title = element_text(hjust = 0.5))
+```
+
+#Collapsing each of the different specifications for all 4 years (takes the sum of the variables 1,2,3,and 4 years before the election)
+```{r}
+country_c <- unique(popter$Country)
+pref <- c("Attacks", "nkill", "nwound", "leftproxy", "nkill_left", "nwound_left","rightproxy", "nkill_right", "nwound_right", "IslClaim", "nkill_IslCl", "nwound_IslCl", "IslPoss", "nkill_IslPoss", "nwound_IslPoss")
+```
+
+
+#CREATING BORDER CONTROLS
+```{r}
+bordervar <- function(gpopt, country_c, pref, suffix) {
+  # Loop over each prefix
+  for (prefix in pref) {
+    # Empty vector to store the results for the current prefix
+    results <- numeric(nrow(gpopt))
+    
+    # Loop over each country code
+    for (country_code in country_c) {
+      # Getting Border variable
+      border_var <- gpopt[[paste0("Border", country_code)]]
+      # Getting terrorism variable with the specified year
+      prefix_var <- gpopt[[paste0(prefix, country_code, suffix)]]
+      # Product of Border and prefix variables
+      results <- results + border_var * prefix_var
+    }
+    
+    # Add the sum of results as a new variable in gpopt
+    gpopt[[paste0("Border", suffix, prefix, "_sum")]] <- results
+  }
+  
+  return(gpopt)
+}
+
+# Getting Border results for Y1
+gpopt <- bordervar(gpopt, country_c, pref, "Y1")
+
+# Getting Border results for Y2
+gpopt <- bordervar(gpopt, country_c, pref, "Y2")
+
+# Getting Border results for Y3
+gpopt <- bordervar(gpopt, country_c, pref, "Y3")
+
+# Getting Border results for Y4
+gpopt <- bordervar(gpopt, country_c, pref, "Y4")
+
+gpopt$BorderIslCl <- rowSums(gpopt[, paste0("BorderY", 1:4, "IslClaim_sum")])
+gpopt$Bordernk_IslCl <- rowSums(gpopt[, paste0("BorderY", 1:4, "nkill_IslCl_sum")])
+gpopt$Bordernw_IslCl <- rowSums(gpopt[, paste0("BorderY", 1:4, "nwound_IslCl_sum")])
+```
+
+#CREATING ECONOMIC AND DEMOGRAPHIC CONTROLS
+
+```{r}
+ecc<-"+UnemploymentY1+GrowthY1+Export_penetrationY1+Import_penetrationY1"
+demc<-"+Immigration_percentY1+Emigration_percentY1"
+```
+
+#Weighted regressions with IslClaim collapsed over 4 years
+
+```{r}
+library(fixest)
+t<- "| Country + Year"
+lt <- "+ PopulistRight_Lag1|Country + Year"
+lt2 <- "+ PopulistRight_Lag1+PopulistRight_Lag2|Country + Year"
+lt3 <- "+ PopulistRight_Lag1+PopulistRight_Lag2+PopulistRight_Lag3|Country + Year"
+  
+#HOMEISLCLAIM weighted regressions
+
+bc<-"PopulistRight ~ Total4HomeIslClaim"
+
+#No controls
+riscl1<-feols(as.formula(paste0(bc,t)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl1)
+
+#Demographic and economic controls
+riscl2<-feols(as.formula(paste0(bc,demc, ecc, t)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl2)
+
+#Border, demographic and economic controls 
+riscl3<-feols(as.formula(paste0(bc,demc, ecc,"+BorderIslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl3)
+
+#Border, demographic and economic controls, lag1
+riscl4<-feols(as.formula(paste0(bc,demc, ecc,"+BorderIslCl", lt)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl4)
+
+#Border, demographic and economic controls, lag2
+riscl5<-feols(as.formula(paste0(bc,demc, ecc,"+BorderIslCl", lt2)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl5)
+
+#Border, demographic and economic controls, lag3
+riscl6<-feols(as.formula(paste0(bc,demc, ecc,"+BorderIslCl", lt3)), data=gpopt, weights=gpopt$populationY1)
+summary(riscl6)
+
+library(tibble)
+library(modelsummary)
+
+rows <- tribble(~term, ~estimate, ~control1, ~control4, ~control5, ~control6, ~control7,
+                'Specifications', '', '','','','','',
+                'Economic controls', 'No','Yes','Yes','Yes','Yes','Yes',
+                'Demographic controls','No','Yes','Yes','Yes','Yes', 'Yes',
+                'FE: Country','Yes','Yes','Yes','Yes','Yes','Yes',
+                'FE: Year','Yes','Yes','Yes','Yes','Yes', 'Yes',
+                'Weights', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes', 'Yes',
+                'Fit statistics', '', '','','','','')
+
+attr(rows, 'position') <- c(11,12,13,14,15,16,17)
+
+#Table
+modelssc <- list(riscl1, riscl2, riscl3, riscl4, riscl5, riscl6)
+
+# Generate the table
+tabb1 <- modelsummary(
+  modelssc, 
+  coef_omit = c(2,3,4,5,6,7), 
+  output = "html", 
+  stars = T, 
+  gof_omit = 'R2 Within|R2 Within Adj.|AIC|BIC|RMSE|FE: Country|FE: Year',
+  add_rows = rows)
+tabb1
+```
+
+
+#Weighted regressions with nkill_IslClaim collapsed over 4 years
+
+
+```{r}
+#HOMENKILL_ISLCL weighted regressions
+
+bck<-"PopulistRight ~ Total4Homenkill_IslCl"
+
+#No controls
+risclk1<-feols(as.formula(paste0(bck,t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk1)
+
+#Demographic and economic controls
+risclk2<-feols(as.formula(paste0(bck,demc, ecc, t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk2)
+
+#Border, demographic and economic controls 
+risclk3<-feols(as.formula(paste0(bck,demc, ecc,"+Bordernk_IslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk3)
+
+#Border, demographic and economic controls, lag1
+risclk4<-feols(as.formula(paste0(bck,demc, ecc,"+Bordernk_IslCl", lt)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk4)
+
+#Border, demographic and economic controls, lag2
+risclk5<-feols(as.formula(paste0(bck,demc, ecc,"+Bordernk_IslCl", lt2)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk5)
+
+#Border, demographic and economic controls, lag3
+risclk6<-feols(as.formula(paste0(bck,demc, ecc,"+Bordernk_IslCl", lt3)), data=gpopt, weights=gpopt$populationY1)
+summary(risclk6)
+
+#Table
+modelssc2 <- list(risclk1, risclk2, risclk3, risclk4, risclk5, risclk6)
+
+# Generate the table
+tabb2 <- modelsummary(
+  modelssc2, 
+  coef_omit = c(2,3,4,5,6,7), 
+  output = "latex", 
+  stars = T, 
+  gof_omit = 'R2 Within|R2 Within Adj.|AIC|BIC|RMSE|FE: Country|FE: Year',
+  add_rows = rows)
+tabb2
+```
+#Weighted regressions with nwound_IslClaim collapsed over 4 years
+
+```{r}
+#HOMEISLCLAIM_NWOUND weighted regressions
+
+bcw<-"PopulistRight ~ Total4Homenwound_IslCl"
+
+#No controls
+risclw1<-feols(as.formula(paste0(bcw,t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw1)
+
+#Demographic and economic controls
+risclw2<-feols(as.formula(paste0(bcw,demc, ecc, t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw2)
+
+#Border, demographic and economic controls 
+risclw3<-feols(as.formula(paste0(bcw,demc, ecc,"+Bordernw_IslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw3)
+
+#Border, demographic and economic controls, lag1
+risclw4<-feols(as.formula(paste0(bcw,demc, ecc,"+Bordernw_IslCl", lt)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw4)
+
+#Border, demographic and economic controls, lag2
+risclw5<-feols(as.formula(paste0(bcw,demc, ecc,"+Bordernw_IslCl", lt2)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw5)
+
+#Border, demographic and economic controls, lag3
+risclw6<-feols(as.formula(paste0(bcw,demc, ecc,"+Bordernw_IslCl", lt3)), data=gpopt, weights=gpopt$populationY1)
+summary(risclw6)
+
+#Table
+modelssc3 <- list(risclw1, risclw2, risclw3, risclw4, risclw5, risclw6)
+
+# Generate the table
+tabb3 <- modelsummary(
+  modelssc3, 
+  coef_omit = c(2,3,4,5,6,7), 
+  output = "latex", 
+  stars = T, 
+  gof_omit = 'R2 Within|R2 Within Adj.|AIC|BIC|RMSE|FE: Country|FE: Year',
+  add_rows = rows)
+tabb3
+```
+
+```{r}
+
+
+gpopt$Lead_MHomeIslClaim <- lead(gpopt$M_HomeIslClaim)
+gpopt$Lead2_MHomeIslClaim<-lead(gpopt$M_HomeIslClaim, n=2)
+gpopt$Lead3_MHomeIslClaim<-lead(gpopt$M_HomeIslClaim, n=3)
+
+tt<-"PopulistRight~Lead_MHomeIslClaim"
+tt2<-"PopulistRight~Lead_MHomeIslClaim+Lead2_MHomeIslClaim"
+tt3<-"PopulistRight~Lead_MHomeIslClaim+Lead2_MHomeIslClaim+Lead3_MHomeIslClaim"
+
+leadr<-feols(as.formula(paste0(tt,demc,ecc,"+Bordernw_IslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(leadr)
+leadr2<-feols(as.formula(paste0(tt2,demc,ecc,"+Bordernw_IslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(leadr2)
+leadr3<-feols(as.formula(paste0(tt3,demc,ecc,"+Bordernw_IslCl", t)), data=gpopt, weights=gpopt$populationY1)
+summary(leadr3)
+
+leadmod<-list(leadr, leadr2, leadr3)
+
+rowssl <- tribble(
+  ~term, ~estimate, ~control1, ~control4,
+  'Specifications', '', '', '',
+  'Economic controls', 'Yes', 'Yes', 'Yes',
+  'Demographic controls', 'Yes', 'Yes', 'Yes',
+  'FE: Country', 'Yes', 'Yes', 'Yes',
+  'FE: Year', 'Yes', 'Yes', 'Yes',
+  'Weights', 'Yes', 'Yes', 'Yes',
+  'Fit statistics', '', '', ''
+)
+
+attr(rowssl, 'position') <- c(23, 24,25,26, 27, 28,29)
+
+modelsummary(leadmod, coef_omit = c(2,3,4,5,6,7), 
+  output = "html", 
+  stars = T, 
+  gof_omit = 'R2 Within|R2 Within Adj.|AIC|BIC|RMSE|FE: Country|FE: Year',
+  add_rows = rowssl)
+
+
+
+```
+
+
+
+
+
