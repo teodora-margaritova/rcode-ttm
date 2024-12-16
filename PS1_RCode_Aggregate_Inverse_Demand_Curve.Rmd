@@ -1,0 +1,68 @@
+---
+title: "DemandCurve"
+author: "Teodora"
+date: "2024-12-13"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+1)Loading file 
+-If you have an issue with loading the csv file after pasting the file location, it is because in the folder, the source is given with backslashes, but R does not read that. You should replace every backslash (\) with either a forward slash (/) or a double backslash (\\). 
+```{r}
+library(tidyverse)
+in_cons_data<-read_csv("C:/Users/likis/OneDrive/Desktop/Microeconomics/PP440/Problem Set 1 - PP440 Data.csv")
+```
+
+2)Manipulating the data
+-Right now, there is consumer data in 3 columns (indicating the willingness to purchase for each next increment, out of 3 increments). I will instead transform it to have all consumer demand data in one column. 
+```{r}
+library(dplyr) #loading so i can use pipes
+cons_d<-in_cons_data %>%
+  pivot_longer(
+    cols = contains("SSBB"),  # Dynamically select columns containing "SSBB"
+    names_to = "SSBB_Type",   # New column to store the column names (e.g., First_SSBB, etc.)
+    values_to = "Value"       # New column to store the values from the selected columns
+  )
+cons_d
+```
+
+3)Value counts
+
+```{r}
+value_counts <- cons_d %>%
+  arrange(desc(Value)) %>% #arranging in descending order of Price (descending order of "Value" column, so that the following operations work fine, also very important for the step graph)
+  mutate(GreaterCount = sapply(Value, function(x) sum(Value > x)), #column of quantity demanded at a price greater than a given price (where price is in "Value") 
+         GreaterOrEqualCount = sapply(Value, function(x) sum(Value >= x)), #column of quantity demanded at a price greater or equal to a given price (where price is in "Value") 
+         LeadValue = lead(Value)) %>% #creating leads of quantity (needed for vertical segments of step plot)
+  distinct(Value, GreaterOrEqualCount, GreaterCount, LeadValue)
+
+value_counts
+```
+
+4)Creating plot
+```{r}
+library(ggplot2)
+
+# Plot the step graph with customized line appearances
+ggplot() +
+  # Horizontal segments as dashed lines
+  geom_segment(data = value_counts,
+               aes(x = GreaterCount, xend = GreaterOrEqualCount, y = Value, yend = Value),
+               linetype = "dashed", color = "black", size = 0.8) +
+  # Vertical segments as solid lines
+  geom_segment(data = value_counts,
+               aes(x = GreaterOrEqualCount, xend = GreaterOrEqualCount, y = Value, yend = LeadValue), size = 1) +
+  #Adding red dot indicating "when indifferent, buy"
+  geom_point(data = value_counts, aes(x=GreaterOrEqualCount, y=Value), color = "red")+
+  # Labels and theme
+  labs(
+    title = "Inverse Demand Curve",
+    x = "Quantity of SSBBs",
+    y = "Price of SSBBs"
+  ) +
+  theme_minimal()
+```
+
